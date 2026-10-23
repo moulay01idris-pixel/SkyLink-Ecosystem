@@ -856,8 +856,9 @@ class MoMoLinkEngine:
         # وضع لوحة المفاتيح (scrcpy 2.4+): sdk | uhid | aoa
         #   uhid يجعل الهاتف يرى لوحة مفاتيح فيزيائية فيطبّق تخطيطه هو،
         #   فيُصلح انقلاب الأحرف على لوحات AZERTY الفرنسية.
+        #   "sdk" هو الافتراضي في scrcpy ⇒ لا نضيف الخيار إطلاقاً (توافق أوسع).
         keyboard = str(self._opts.get("keyboard") or "sdk").strip().lower()
-        if keyboard in ("sdk", "uhid", "aoa"):
+        if keyboard in ("uhid", "aoa"):
             args.append(f"--keyboard={keyboard}")
 
         # التسجيل يبدأ مع بدء البث (scrcpy لا يبدأ تسجيلاً في منتصف الجلسة).
