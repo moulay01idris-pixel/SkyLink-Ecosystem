@@ -76,7 +76,7 @@ import flet as ft
 # ==============================================================================
 
 APP_NAME = "MoMoLink Desktop Pro"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 # عنوان شريط النافذة: بلا رموز تعبيرية لأن ويندوز لا يرسمها في شريط العنوان
 # فكانت تظهر «??» — والرمز 🚀 موجود في عنوان الواجهة الداخلية أدناه.
 WINDOW_TITLE = "MoMoLink Desktop Pro"
@@ -126,6 +126,11 @@ def _config_dir() -> Path:
 
 
 CONFIG_PATH = _config_dir() / "config.json"
+
+#: مجلد اللقطات والتسجيلات (مجلد الصور في ويندوز — يسهل الوصول إليه).
+CAPTURES_DIR = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Pictures" / "MoMoLink"
+SCREENSHOT_DIR = CAPTURES_DIR / "Screenshots"
+RECORD_DIR = CAPTURES_DIR / "Recordings"
 
 #: نسخة الإعدادات — رفعها يفرض قيم جودة جديدة على من جرّب نسخة أقدم.
 CONFIG_VERSION = "2"
@@ -192,7 +197,146 @@ def save_config(cfg: dict) -> None:
 
 
 # ==============================================================================
-# 2) اكتشاف أدوات scrcpy و adb (المدمجة بجانب التطبيق أو المثبّتة)
+# 2) لقطات الشاشة والتسجيل
+# ==============================================================================
+
+#: مجلد اللقطات (PNG) — يُنشأ تلقائياً.
+SHOTS_DIR = Path.home() / "Pictures" / "MoMoLink"
+
+#: مجلد تسجيلات البث (MP4) — يُنشأ تلقائياً.
+REC_DIR = Path.home() / "Videos" / "MoMoLink"
+
+#: رسالة WM_CLOSE لويندوز.
+WM_CLOSE = 0x0010
+
+
+def _find_mirror_window(pid: Optional[int] = None) -> Optional[tuple[int, int, int, int, int]]:
+    """
+    يبحث عن نافذة البث (scrcpy) ويعيد (مقبض النافذة، يسار، أعلى، يمين، أسفل).
+
+    التعرّف بصف النافذة "SDL_app" الذي يستعمله scrcpy — لا بالعنوان، لأن نافذة
+    التطبيق نفسه تحمل نفس العنوان. وإن مُرّر pid نطابقه أيضاً حتى لا نلتقط
+    نافذة لعبة SDL أخرى مفتوحة على الجهاز.
+    """
+    if not IS_WINDOWS:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return None
+
+    user32 = ctypes.windll.user32
+    hits: list[tuple[int, int, int, int, int]] = []
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    def _callback(hwnd, _lparam):
+        try:
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            name = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, name, 256)
+            if name.value != "SDL_app":
+                return True
+            if pid is not None:
+                owner = wintypes.DWORD(0)
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+                if int(owner.value) != int(pid):
+                    return True
+            rect = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            width = rect.right - rect.left
+            height = rect.bottom - rect.top
+            if width > 200 and height > 200:
+                hits.append((int(hwnd), rect.left, rect.top, rect.right, rect.bottom))
+        except Exception:
+            pass
+        return True
+
+    try:
+        user32.EnumWindows(WNDENUMPROC(_callback), 0)
+    except Exception:
+        return None
+    return hits[0] if hits else None
+
+
+def capture_screenshot(pid: Optional[int] = None, open_after: bool = True) -> tuple[bool, str]:
+    """
+    لقطة لنافذة البث إن كانت مفتوحة، وإلا للشاشة كاملة.
+    يعيد (نجح؟، رسالة عربية جاهزة للسجل).
+    """
+    try:
+        from PIL import ImageGrab
+    except Exception:
+        return False, "مكتبة Pillow غير مثبّتة — شغّل: pip install pillow"
+
+    rect: Optional[tuple[int, int, int, int]] = None
+    scope = "الشاشة كاملة"
+    found = _find_mirror_window(pid)
+
+    if found:
+        hwnd, left, top, right, bottom = found
+        # إظهار نافذة البث في المقدمة: تصوير نافذة مغطّاة يعطي بكسلات خاطئة.
+        try:
+            import ctypes
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            time.sleep(0.35)
+            found = _find_mirror_window(pid)   # الحدود قد تتغيّر بعد الإظهار
+            if found:
+                _, left, top, right, bottom = found
+        except Exception:
+            pass
+        rect = (left, top, right, bottom)
+        scope = "نافذة البث"
+
+    try:
+        SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        path = SHOTS_DIR / f"shot-{time.strftime('%Y%m%d-%H%M%S')}.png"
+        image = ImageGrab.grab(bbox=rect, all_screens=True) if rect else ImageGrab.grab(all_screens=True)
+        image.save(path, "PNG")
+    except Exception as exc:
+        return False, f"تعذّر أخذ اللقطة: {exc}"
+
+    if open_after:
+        try:
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    return True, f"لقطة ({scope}) → {path}"
+
+
+def close_mirror_window(pid: Optional[int] = None) -> bool:
+    """
+    يطلب من نافذة البث الإغلاق بلطف (WM_CLOSE).
+    السبب: الإنهاء القسري يترك ملف التسجيل MP4 مبتوراً، أما الإغلاق اللطيف
+    فيسمح لـscrcpy بإنهاء الملف بشكل سليم.
+    """
+    if not IS_WINDOWS:
+        return False
+    found = _find_mirror_window(pid)
+    if not found:
+        return False
+    try:
+        import ctypes
+        ctypes.windll.user32.PostMessageW(found[0], WM_CLOSE, 0, 0)
+        return True
+    except Exception:
+        return False
+
+
+def open_shots_folder() -> str:
+    """يفتح مجلد اللقطات في المستكشف ويعيد رسالة للسجل."""
+    try:
+        SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(SHOTS_DIR))  # type: ignore[attr-defined]
+        return f"مجلد اللقطات: {SHOTS_DIR}"
+    except Exception as exc:
+        return f"تعذّر فتح المجلد: {exc}"
+
+
+# ==============================================================================
+# 3) اكتشاف أدوات scrcpy و adb (المدمجة بجانب التطبيق أو المثبّتة)
 # ==============================================================================
 
 def _tool_dirs() -> list[Path]:
@@ -445,17 +589,25 @@ class MoMoLinkEngine:
         on_log: Callable[[str], None],
         on_devices: Callable[[list[str]], None],
         on_busy: Callable[[bool], None],
+        on_record_state: Optional[Callable[[bool], None]] = None,
     ) -> None:
         self.tools = toolchain
         self._on_status = on_status
         self._on_log = on_log
         self._on_devices = on_devices
         self._on_busy = on_busy
+        #: يُنادى بـ True عند بدء التسجيل فعلياً و False عند إيقافه (لتحديث الزر).
+        self._on_record_state = on_record_state or (lambda _recording: None)
 
         self._lock = threading.Lock()
         self._scrcpy_proc: Optional[subprocess.Popen] = None
         self._stop_flag = threading.Event()
         self._opts: dict = dict(DEFAULT_CONFIG)
+
+        #: آخر اتصال ناجح (الوضع، العنوان) — يلزم لإعادة التشغيل عند التسجيل.
+        self._last_connect: Optional[tuple[str, str]] = None
+        #: مسار ملف التسجيل الجاري (None = لا تسجيل).
+        self._record_path: Optional[Path] = None
 
     # ---------------------------------------------------------------- حالة
     def status(self, kind: str, title: str, detail: str = "") -> None:
@@ -518,10 +670,15 @@ class MoMoLinkEngine:
             args.append("--stay-awake")
         if self._opts.get("no_audio"):
             args.append("--no-audio")   # متاح في scrcpy 2.0+ فقط
+
+        # التسجيل يبدأ مع بدء البث (scrcpy لا يبدأ تسجيلاً في منتصف الجلسة).
+        record = str(self._opts.get("record_path") or "").strip()
+        if record:
+            args.append(f"--record={record}")
         return args
 
     # ------------------------------------------------------------- إيقاف
-    def stop(self) -> None:
+    def stop(self, silent: bool = False) -> None:
         self._stop_flag.set()
         with self._lock:
             proc = self._scrcpy_proc
@@ -538,7 +695,8 @@ class MoMoLinkEngine:
                 except Exception:
                     pass
         self.log("تم إيقاف جلسة البث.")
-        self.status("idle", "متوقف", "لا توجد جلسة بث نشطة الآن.")
+        if not silent:
+            self.status("idle", "متوقف", "لا توجد جلسة بث نشطة الآن.")
 
     # ------------------------------------------------------------- مراقبة
     def _monitor(self, proc: subprocess.Popen, success_detail: str) -> None:
@@ -583,6 +741,8 @@ class MoMoLinkEngine:
             if proc.poll() is None:
                 self.status("ok", "متصل ✔ الشاشة تُبثّ الآن", ok_detail)
                 self._on_busy(False)
+                if self._record_path:
+                    self._on_record_state(True)
                 threading.Thread(
                     target=self._monitor, args=(proc, ok_detail), daemon=True
                 ).start()
@@ -625,6 +785,7 @@ class MoMoLinkEngine:
     # ------------------------------------------------------------- USB
     def connect_usb(self) -> None:
         self._stop_flag.clear()
+        self._last_connect = ("usb", "")
         self._on_busy(True)
         try:
             self.status("working", "جاري الاتصال عبر USB…", "نتحقق من تصحيح الأخطاء")
@@ -678,6 +839,7 @@ class MoMoLinkEngine:
         self._on_busy(True)
         try:
             addr = f"{host}:{port}"
+            self._last_connect = ("wifi", addr)
             self.status("working", "جاري الاتصال لاسلكياً…", f"محاولة الوصول إلى {addr}")
             self.log(f"— بدء الاتصال اللاسلكي بالعنوان {addr} —")
 
@@ -719,6 +881,151 @@ class MoMoLinkEngine:
             self.status("error", "خطأ غير متوقع", str(exc)[:160])
         finally:
             self._on_busy(False)
+
+    # --------------------------------------- لقطة الشاشة وتسجيل الفيديو
+    def _active_serial(self) -> Optional[str]:
+        """يعيد أول جهاز متصل فعلاً (يتجاهل «غير مصرّح»)."""
+        devices = [d for d in self.list_devices() if "←" not in d]
+        return devices[0] if devices else None
+
+    def screenshot(self) -> None:
+        """
+        لقطة شاشة فورية عبر ADB (exec-out screencap) — لا تحتاج جلسة بث مفتوحة.
+        تُحفظ في «الصور/MoMoLink/Screenshots».
+        """
+        if not self.tools.adb_exe:
+            self.status("error", "adb غير موجود",
+                        "تأكد من وجود adb.exe داخل مجلد scrcpy.")
+            return
+
+        serial = self._active_serial()
+        if not serial:
+            self.status("error", "لا يوجد هاتف متصل",
+                        "وصّل الهاتف أو فعّل التصحيح اللاسلكي ثم أعد المحاولة.")
+            return
+
+        self.status("working", "جاري أخذ اللقطة…", f"من {serial}")
+        try:
+            SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            self.status("error", "تعذّر إنشاء مجلد اللقطات", str(exc)[:160])
+            return
+
+        path = SCREENSHOT_DIR / f"MoMoLink_{time.strftime('%Y%m%d_%H%M%S')}.png"
+        cmd = [str(self.tools.adb_exe), "-s", serial, "exec-out", "screencap", "-p"]
+        try:
+            # الكتابة إلى الملف مباشرة: أي تحويل نصي (PowerShell مثلاً) يُفسد PNG.
+            with open(path, "wb") as handle:
+                subprocess.run(
+                    cmd,
+                    stdout=handle,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=CREATE_NO_WINDOW,
+                    timeout=45,
+                    check=False,
+                )
+        except Exception as exc:  # noqa: BLE001
+            self.status("error", "فشل أخذ اللقطة", str(exc)[:160])
+            return
+
+        valid = False
+        try:
+            if path.is_file() and path.stat().st_size > 5000:
+                with open(path, "rb") as handle:
+                    valid = handle.read(4) == b"\x89PNG"
+        except Exception:
+            valid = False
+
+        if valid:
+            self.log(f"لقطة شاشة محفوظة: {path}")
+            self.status("ok", "تم أخذ اللقطة ✔", str(path))
+            return
+
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        self.status(
+            "error",
+            "لم تُحفظ اللقطة",
+            "أعد المحاولة — إن تكرّر فالشاشة قد تكون محمية من نظام أندرويد نفسه.",
+        )
+
+    def start_recording(self) -> None:
+        """
+        يبدأ تسجيل الفيديو بإعادة تشغيل البث مع خيار --record.
+        السبب: scrcpy يقرأ خيار التسجيل عند الإطلاق فقط، لا في منتصف الجلسة.
+        """
+        if not self.tools.scrcpy_exe:
+            self.status("error", "scrcpy غير موجود",
+                        "تأكد من وجود ملفات scrcpy داخل المجلد.")
+            return
+        if not self._last_connect:
+            self.status("error", "اتصل أولاً",
+                        "اضغط زر «بث ومشاركة الشاشة» ثم ابدأ التسجيل.")
+            return
+
+        try:
+            RECORD_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            self.status("error", "تعذّر إنشاء مجلد التسجيلات", str(exc)[:160])
+            return
+
+        path = RECORD_DIR / f"MoMoLink_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+        self._record_path = path
+        self._opts["record_path"] = str(path)
+        self.log(f"بدء التسجيل إلى: {path}")
+
+        self.stop(silent=True)
+        time.sleep(0.8)
+
+        mode, addr = self._last_connect
+        self.status("working", "جاري بدء التسجيل…", "إعادة تشغيل البث مع التسجيل")
+        if mode == "wifi":
+            self.connect_wifi(addr)
+        else:
+            self.connect_usb()
+
+        with self._lock:
+            alive = self._scrcpy_proc is not None and self._scrcpy_proc.poll() is None
+        if not alive:
+            self._record_path = None
+            self._opts.pop("record_path", None)
+            self._on_record_state(False)
+            self.log("تعذّر بدء التسجيل: فشل تشغيل البث.")
+
+    def stop_recording(self) -> None:
+        """يوقف التسجيل وينهي كتابة الملف، ثم يتحقق من حجمه فعلياً."""
+        path = self._record_path
+        self._record_path = None
+        self._opts.pop("record_path", None)
+
+        self.stop()
+        self._on_record_state(False)
+        if not path:
+            return
+
+        # scrcpy يُنهي كتابة الملف بعد إغلاق العملية — ننتظر حتى يكتمل.
+        for _ in range(24):
+            try:
+                if path.is_file() and path.stat().st_size > 0:
+                    break
+            except OSError:
+                pass
+            time.sleep(0.25)
+
+        try:
+            size = path.stat().st_size if path.is_file() else 0
+        except OSError:
+            size = 0
+
+        if size > 0:
+            mb = size / (1024 * 1024)
+            self.log(f"انتهى التسجيل: {path} ({mb:.1f} م.ب)")
+            self.status("ok", "تم حفظ التسجيل ✔", f"{path}\n{mb:.1f} م.ب")
+        else:
+            self.status("error", "لم يُحفظ التسجيل",
+                        "لم يُنشئ scrcpy ملفاً — راجع «سجل الأحداث» بالأسفل.")
 
     # ------------------------------------------------------------- تنظيف
     def shutdown(self) -> None:
@@ -774,6 +1081,7 @@ def main(page: ft.Page) -> None:
         "advanced_open": False,
         "busy": False,
         "quality": cfg.get("quality", "high"),
+        "recording": False,
     }
 
     # ------------------------------------------------------- تحديث آمن للواجهة
@@ -1074,8 +1382,13 @@ def main(page: ft.Page) -> None:
                 )
         safe_update()
 
-    engine = MoMoLinkEngine(tools, set_status, add_log, update_devices, set_busy)
+    # جسر صغير: يُبلّغ المحرّك الواجهة بحالة التسجيل عبر دالة تُعرَّف لاحقاً.
+    _record_hook: list = [lambda _recording: None]
 
+    engine = MoMoLinkEngine(
+        tools, set_status, add_log, update_devices, set_busy,
+        on_record_state=lambda recording: _record_hook[0](recording),
+    )
     # ============================================================ الأزرار
     def select_mode(mode: str) -> None:
         if state["busy"]:
@@ -1134,6 +1447,35 @@ def main(page: ft.Page) -> None:
         log_panel.visible = not log_panel.visible
         safe_update()
 
+    # ------------------------------------------- لقطة الشاشة وتسجيل الفيديو
+    def on_screenshot(e=None) -> None:
+        threading.Thread(target=engine.screenshot, daemon=True).start()
+
+    def on_record(e=None) -> None:
+        if state["recording"]:
+            threading.Thread(target=engine.stop_recording, daemon=True).start()
+            return
+        engine.set_options(collect_options())
+        threading.Thread(target=engine.start_recording, daemon=True).start()
+
+    def on_open_captures(e=None) -> None:
+        try:
+            SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            if IS_WINDOWS:
+                os.startfile(str(CAPTURES_DIR))  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001
+            add_log(f"تعذّر فتح مجلد اللقطات: {exc}")
+
+    def set_record_state(recording: bool) -> None:
+        """يُنادى من المحرّك: يغيّر شكل زر التسجيل حسب الحالة الحقيقية."""
+        state["recording"] = recording
+        rec_text.value = "إيقاف التسجيل" if recording else "تسجيل"
+        rec_text.color = "#FFFFFF" if recording else ERR
+        rec_btn.bgcolor = ERR if recording else None
+        safe_update()
+
+    _record_hook[0] = set_record_state
+
     connect_btn = ft.Button(
         content=ft.Row([
             ft.Icon(icon=ft.Icons.PLAY_ARROW_ROUNDED, size=22, color="#04121B"),
@@ -1156,6 +1498,7 @@ def main(page: ft.Page) -> None:
         ], alignment=ft.MainAxisAlignment.CENTER, spacing=6),
         disabled=True,
         height=44,
+        expand=True,
         on_click=on_stop,
         style=ft.ButtonStyle(
             side=ft.BorderSide(width=1, color="#3B1B1B"),
@@ -1169,6 +1512,45 @@ def main(page: ft.Page) -> None:
             ft.Text("كشف الأجهزة", size=11, color=TEXT_MUTED),
         ], spacing=5),
         on_click=on_refresh,
+    )
+
+    shot_btn = ft.OutlinedButton(
+        content=ft.Row([
+            ft.Icon(icon=ft.Icons.PHOTO_CAMERA, size=16, color=ACCENT),
+            ft.Text("لقطة", size=11, color=ACCENT),
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=5),
+        height=44,
+        expand=True,
+        on_click=on_screenshot,
+        tooltip="لقطة شاشة فورية تُحفظ في مجلد الصور",
+        style=ft.ButtonStyle(
+            side=ft.BorderSide(width=1, color="#1E3A5F"),
+            shape=ft.RoundedRectangleBorder(radius=12),
+        ),
+    )
+
+    rec_text = ft.Text("تسجيل", size=11, color=ERR)
+    rec_btn = ft.OutlinedButton(
+        content=ft.Row([
+            ft.Icon(icon=ft.Icons.VIDEOCAM, size=16, color=ERR),
+            rec_text,
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=5),
+        height=44,
+        expand=True,
+        on_click=on_record,
+        tooltip="تسجيل فيديو للشاشة (يعيد تشغيل البث مع التسجيل)",
+        style=ft.ButtonStyle(
+            side=ft.BorderSide(width=1, color="#3B1B1B"),
+            shape=ft.RoundedRectangleBorder(radius=12),
+        ),
+    )
+
+    captures_btn = ft.TextButton(
+        content=ft.Row([
+            ft.Icon(icon=ft.Icons.FOLDER_OPEN, size=15, color=TEXT_MUTED),
+            ft.Text("اللقطات", size=11, color=TEXT_MUTED),
+        ], spacing=5),
+        on_click=on_open_captures,
     )
 
     log_btn = ft.TextButton(
@@ -1242,14 +1624,15 @@ def main(page: ft.Page) -> None:
             advanced_panel,
 
             connect_btn,
-            ft.Row([refresh_btn, log_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Row([refresh_btn, captures_btn, log_btn],
+                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             devices_column,
             log_panel,
             ft.Container(
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(icon=ft.Icons.INFO_OUTLINE, size=14, color=ACCENT),
-                        ft.Text("دليل سريع · ٤ خطوات", size=11,
+                        ft.Text("دليل سريع · ٥ خطوات", size=11,
                                 weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                     ], spacing=6),
                     ft.Text("١ · على الهاتف: الإعدادات ← حول الهاتف ← اضغط «رقم البنية» ٧ مرات "
@@ -1260,6 +1643,10 @@ def main(page: ft.Page) -> None:
                             "تطبيق MoMoLink Connect.", size=10, color=TEXT_MUTED),
                     ft.Text("٤ · لنقل الملفات وتبادل الحافظة: شغّل 03_Remote_Control\\run_bridge.bat "
                             "ثم امسح رمز QR بكاميرا الهاتف.", size=10, color=TEXT_MUTED),
+                    ft.Text("٥ · زرّا «لقطة» و«تسجيل» يحفظان في مجلد الصور ← MoMoLink. "
+                            "الشاشات المحمية (كصور الرسائل التي تُحذف بعد العرض) تظهر سوداء — "
+                            "هذا منع من نظام أندرويد نفسه لا عطل في التطبيق.",
+                            size=10, color=TEXT_MUTED),
                 ], spacing=5),
                 padding=12, border_radius=12, bgcolor="#0A1322",
                 border=ft.Border.all(1, BORDER),
@@ -1273,7 +1660,7 @@ def main(page: ft.Page) -> None:
     bottom = ft.Container(
         content=ft.Column([
             ft.Container(content=status_bar),
-            ft.Container(content=stop_btn, alignment=ft.Alignment.CENTER),
+            ft.Row([stop_btn, shot_btn, rec_btn], spacing=8),
         ], spacing=8),
         padding=ft.Padding.only(left=18, right=18, top=10, bottom=14),
         bgcolor=BG_PANEL,
