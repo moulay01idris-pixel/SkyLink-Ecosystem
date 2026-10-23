@@ -1,0 +1,11 @@
+# متطلبات تطبيق الهاتف SkyLink Connect
+#
+# ملاحظة: عند بناء APK عبر Buildozer لا تُستخدم هذه القائمة —
+# Buildozer يقرأ المتطلبات من السطر requirements داخل ملف buildozer.spec.
+# هذه القائمة مفيدة فقط لتشغيل التطبيق على الحاسوب أثناء التطوير (معاينة الواجهة).
+
+kivy==2.3.0
+kivymd==1.2.0
+pyjnius==1.6.1 ; sys_platform != "win32"
+arabic-reshaper==3.0.0
+python-bidi==0.4.2

@@ -1,0 +1,36 @@
+# ملفات البناء والبيانات المؤقتة — لا تُرفع إلى GitHub
+# ---------------------------------------------------------------------------
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Buildozer / python-for-android
+bin/
+.buildozer/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# أنظمة التشغيل
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# أسرار — لا تُرفع أبداً
+.env
+.env.*
+!.env.example
+
+# أدلة مؤقتة
+_proof_*.png
+_proof_*.pdf

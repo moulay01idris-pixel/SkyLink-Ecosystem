@@ -1,0 +1,206 @@
+###############################################################################
+# SkyLink Ecosystem — البناء السحابي التلقائي
+# -----------------------------------------------------------------------------
+# هذا الملف يجعل GitHub يبني لك تلقائياً:
+#   1) تطبيق الهاتف   → ملف APK  (على خادم لينكس مجاني)
+#   2) تطبيق الحاسوب  → ملف .app  (على خادم macOS مجاني)
+#   3) تطبيق الحاسوب  → ملف .exe  (على خادم Windows مجاني)
+#
+# المسار الصحيح للملف داخل المستودع:
+#   .github/workflows/build.yml
+#
+# كيف تستعمله؟
+#   ارفع المشروع إلى GitHub ← افتح تبويب Actions ← اختر "Build SkyLink"
+#   ← اضغط "Run workflow" ← بعد الانتهاء حمّل الملفات من قسم Artifacts.
+###############################################################################
+
+name: Build SkyLink
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:            # يسمح بالتشغيل اليدوي من تبويب Actions
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # 1) أندرويد — بناء ملف APK عبر Buildozer (لا يحتاج أي أدوات على حاسوبك)
+  # ===========================================================================
+  build-android:
+    name: Android APK (Buildozer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: سحب الكود من المستودع
+        uses: actions/checkout@v4
+
+      - name: تجهيز بايثون 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: تثبيت حزم النظام المطلوبة للبناء
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk \
+            autoconf automake libtool libtool-bin pkg-config \
+            zlib1g-dev libncurses-dev libncursesw5-dev \
+            cmake libffi-dev libssl-dev build-essential ccache \
+            libltdl-dev aidl
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> "$GITHUB_ENV"
+
+      - name: تثبيت Buildozer و Cython
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "cython==0.29.36" buildozer
+
+      - name: تخزين مؤقت لمجلد البناء (يقلّل الوقت من 60 دقيقة إلى ~10)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            02_Android_SkyLinkConnect/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('02_Android_SkyLinkConnect/buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      - name: بناء ملف APK (debug)
+        working-directory: 02_Android_SkyLinkConnect
+        run: |
+          yes | buildozer -v android debug || buildozer -v android debug
+
+      - name: إظهار الملفات الناتجة
+        if: always()
+        working-directory: 02_Android_SkyLinkConnect
+        run: ls -lah bin || true
+
+      - name: رفع ملف APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyLinkConnect-APK
+          path: 02_Android_SkyLinkConnect/bin/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # ===========================================================================
+  # 2) ماك — بناء ملف .app عبر Flet (لأنك لا تملك جهاز macOS)
+  # ===========================================================================
+  build-macos:
+    name: macOS App (Flet pack)
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: سحب الكود من المستودع
+        uses: actions/checkout@v4
+
+      - name: تجهيز بايثون 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: تثبيت المتطلبات
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r 01_Desktop_SkyLink/requirements.txt
+          python -m pip install pyinstaller
+
+      - name: بناء تطبيق الماك (.app)
+        working-directory: 01_Desktop_SkyLink
+        run: |
+          set -e
+          # المحاولة الأولى: أمر Flet الرسمي (يضمّن عميل Flet تلقائياً)
+          if flet pack skylink_desktop.py --name SkyLinkDesktopPro; then
+            echo "BUILD_USING_FLET_PACK"
+          else
+            echo "FALLBACK_TO_PYINSTALLER"
+            pyinstaller --noconfirm --clean --windowed \
+              --name SkyLinkDesktopPro \
+              --collect-all flet --collect-all flet_desktop \
+              skylink_desktop.py
+          fi
+
+      - name: ضغط ملف .app (الحفاظ على صلاحيات التنفيذ)
+        working-directory: 01_Desktop_SkyLink
+        run: |
+          ls -la dist || true
+          if [ -d "dist/SkyLinkDesktopPro.app" ]; then
+            ditto -c -k --sequesterRsrc --keepParent "dist/SkyLinkDesktopPro.app" "../SkyLink-macOS.zip"
+          else
+            cd dist && zip -r "../../SkyLink-macOS.zip" . && cd ..
+          fi
+
+      - name: رفع ملف ماك
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyLink-macOS-App
+          path: SkyLink-macOS.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # ===========================================================================
+  # 3) ويندوز — بناء ملف .exe (إضافة مجانية: تحصل عليه جاهزاً بدون بناء محلي)
+  # ===========================================================================
+  build-windows:
+    name: Windows EXE (PyInstaller)
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: سحب الكود من المستودع
+        uses: actions/checkout@v4
+
+      - name: تجهيز بايثون 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: تثبيت المتطلبات
+        working-directory: 01_Desktop_SkyLink
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller pillow
+
+      - name: توليد الأيقونة (إن لم تكن موجودة)
+        working-directory: 01_Desktop_SkyLink
+        run: |
+          if (-not (Test-Path "assets\icon.ico")) { python assets\make_icon.py }
+        shell: pwsh
+
+      - name: بناء ملف EXE
+        working-directory: 01_Desktop_SkyLink
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SkyLinkDesktopPro `
+            --icon "assets\icon.ico" `
+            --add-data "scrcpy;scrcpy" `
+            --collect-all flet --collect-all flet_desktop `
+            skylink_desktop.py
+
+      - name: تجهيز حزمة التوزيع (EXE + scrcpy)
+        working-directory: 01_Desktop_SkyLink
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item "dist\SkyLinkDesktopPro.exe" "package\" -Force
+          Copy-Item "README.md" "package\" -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path "package\*" -DestinationPath "..\SkyLink-Windows.zip" -Force
+
+      - name: رفع ملف ويندوز
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyLink-Windows-EXE
+          path: SkyLink-Windows.zip
+          if-no-files-found: error
+          retention-days: 30
