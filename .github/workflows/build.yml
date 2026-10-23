@@ -57,8 +57,8 @@ jobs:
 
       - name: تثبيت Buildozer و Cython
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "cython==0.29.36" buildozer
+          python -m pip install --upgrade "pip<25" "setuptools<70" wheel
+          python -m pip install "cython==0.29.36" "buildozer==1.5.0"
 
       - name: تخزين مؤقت لمجلد البناء (يقلّل الوقت من 60 دقيقة إلى ~10)
         uses: actions/cache@v4
@@ -69,6 +69,18 @@ jobs:
           key: buildozer-${{ runner.os }}-${{ hashFiles('02_Android_MoMoLinkConnect/buildozer.spec') }}
           restore-keys: |
             buildozer-${{ runner.os }}-
+
+      - name: التحقق من ملف إعدادات الأندرويد
+        working-directory: 02_Android_MoMoLinkConnect
+        run: |
+          echo "المجلد الحالي: $(pwd)"
+          ls -la
+          if [ ! -f buildozer.spec ]; then
+            echo "::error title=buildozer.spec مفقود::لم يُعثر على 02_Android_MoMoLinkConnect/buildozer.spec في المستودع — البناء لا يمكن أن ينجح."
+            exit 1
+          fi
+          echo "--- أهم أسطر الإعدادات ---"
+          grep -E '^(title|package\.name|package\.domain|requirements|android\.api|android\.archs)' buildozer.spec
 
       - name: بناء ملف APK (debug)
         working-directory: 02_Android_MoMoLinkConnect

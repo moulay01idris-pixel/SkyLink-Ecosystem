@@ -4,7 +4,7 @@
 # PyInstaller
 build/
 dist/
-*.spec
+01_Desktop_MoMoLink/*.spec
 
 # Buildozer / python-for-android
 bin/
@@ -13,6 +13,13 @@ bin/
 *.aab
 *.keystore
 *.jks
+# ملف إعدادات تطبيق الأندرويد — ضروري للبناء السحابي، لا يُستثنى أبداً
+!02_Android_MoMoLinkConnect/buildozer.spec
+
+# أرشيفات المشروع المضغوطة (تبقى على الحاسوب فقط)
+*-GitHub.zip
+*-Windows.zip
+*-macOS.zip
 
 # Python
 __pycache__/
