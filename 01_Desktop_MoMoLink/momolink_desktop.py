@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
- SkyLink Desktop Pro  🚀  —  v1.0.0
+ MoMoLink Desktop Pro  🚀  —  v1.0.0
 --------------------------------------------------------------------------------
- تطبيق سطح المكتب لمنظومة SkyLink Ecosystem.
+ تطبيق سطح المكتب لمنظومة MoMoLink Ecosystem.
 
  الوظيفة:
    بث شاشة هاتف أندرويد والتحكم بها من الحاسوب عبر scrcpy + ADB،
@@ -19,7 +19,7 @@
    * لا تُخزَّن أي بيانات حساسة؛ فقط آخر طريقة اتصال وآخر IP في ملف إعدادات محلي.
 
  التشغيل:
-   python skylink_desktop.py
+   python momolink_desktop.py
 ================================================================================
 """
 
@@ -75,11 +75,11 @@ import flet as ft
 # 0) ثوابت عامة وألوان الواجهة (ألوان HEX تعمل مع كل إصدارات Flet)
 # ==============================================================================
 
-APP_NAME = "SkyLink Desktop Pro"
+APP_NAME = "MoMoLink Desktop Pro"
 APP_VERSION = "1.0.0"
 # عنوان شريط النافذة: بلا رموز تعبيرية لأن ويندوز لا يرسمها في شريط العنوان
 # فكانت تظهر «??» — والرمز 🚀 موجود في عنوان الواجهة الداخلية أدناه.
-WINDOW_TITLE = "SkyLink Desktop Pro"
+WINDOW_TITLE = "MoMoLink Desktop Pro"
 
 BG_DEEP = "#070C16"
 BG_PANEL = "#0C1424"
@@ -121,8 +121,8 @@ def _config_dir() -> Path:
     if IS_WINDOWS:
         base = os.environ.get("APPDATA")
         if base:
-            return Path(base) / "SkyLink"
-    return Path.home() / ".skylink"
+            return Path(base) / "MoMoLink"
+    return Path.home() / ".momolink"
 
 
 CONFIG_PATH = _config_dir() / "config.json"
@@ -176,7 +176,7 @@ def save_config(cfg: dict) -> None:
 def _tool_dirs() -> list[Path]:
     """
     ترتيب البحث عن مجلد scrcpy:
-      1. متغيّر البيئة SKYLINK_SCRCPY_DIR (لمن يريد مجلداً مخصصاً).
+      1. متغيّر البيئة MOMOLINK_SCRCPY_DIR (لمن يريد مجلداً مخصصاً).
       2. مجلد بجانب الملف التنفيذي .exe  (الحالة الطبيعية بعد البناء).
       3. المجلد المؤقت الذي يفكّه PyInstaller في وضع --onefile.
       4. مجلد السكربت نفسه (وضع التطوير).
@@ -184,7 +184,7 @@ def _tool_dirs() -> list[Path]:
     """
     dirs: list[Path] = []
 
-    env_dir = os.environ.get("SKYLINK_SCRCPY_DIR")
+    env_dir = os.environ.get("MOMOLINK_SCRCPY_DIR")
     if env_dir:
         dirs.append(Path(env_dir))
 
@@ -410,7 +410,7 @@ def clean_host(raw: str) -> Optional[str]:
 # 4) محرّك الاتصال (Backend) — يعمل دائماً داخل خيط منفصل
 # ==============================================================================
 
-class SkyLinkEngine:
+class MoMoLinkEngine:
     """
     كل منطق الاتصال مع الهاتف.
     لا يمسّ عناصر الواجهة مباشرةً، بل يُبلّغ عبر دوال مرجعية (Callbacks).
@@ -895,7 +895,7 @@ def main(page: ft.Page) -> None:
         content=ft.Row([
             ft.Icon(icon=ft.Icons.INFO_OUTLINE, size=14, color=ACCENT),
             ft.Text(
-                "افتح تطبيق SkyLink Connect على الهاتف ليظهر لك عنوان IP بخط كبير.",
+                "افتح تطبيق MoMoLink Connect على الهاتف ليظهر لك عنوان IP بخط كبير.",
                 size=10, color=TEXT_MUTED, expand=True,
             ),
         ], spacing=8),
@@ -995,7 +995,7 @@ def main(page: ft.Page) -> None:
                 )
         safe_update()
 
-    engine = SkyLinkEngine(tools, set_status, add_log, update_devices, set_busy)
+    engine = MoMoLinkEngine(tools, set_status, add_log, update_devices, set_busy)
 
     # ============================================================ الأزرار
     def select_mode(mode: str) -> None:
@@ -1120,7 +1120,7 @@ def main(page: ft.Page) -> None:
                 alignment=ft.Alignment.CENTER,
             ),
             ft.Column([
-                ft.Text("SkyLink Desktop Pro 🚀", size=19,
+                ft.Text("MoMoLink Desktop Pro 🚀", size=19,
                         weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                 ft.Text("بث شاشة الأندرويد والتحكم بها من حاسوبك", size=11, color=TEXT_MUTED),
             ], spacing=2, expand=True),
@@ -1170,7 +1170,7 @@ def main(page: ft.Page) -> None:
                     ft.Text("٢ · فعّل «تصحيح أخطاء USB»، وصّل الكابل، ثم اقبل النافذة على الهاتف.",
                             size=10, color=TEXT_MUTED),
                     ft.Text("٣ · للاسلكي: فعّل «التصحيح اللاسلكي» واكتب عنوان IP الظاهر في "
-                            "تطبيق SkyLink Connect.", size=10, color=TEXT_MUTED),
+                            "تطبيق MoMoLink Connect.", size=10, color=TEXT_MUTED),
                 ], spacing=5),
                 padding=12, border_radius=12, bgcolor="#0A1322",
                 border=ft.Border.all(1, BORDER),
@@ -1209,7 +1209,7 @@ def main(page: ft.Page) -> None:
     if not tools.ready:
         set_status(
             "error", "لم يتم العثور على scrcpy",
-            "تأكد أن مجلد scrcpy موجود بجانب التطبيق: 01_Desktop_SkyLink\\scrcpy",
+            "تأكد أن مجلد scrcpy موجود بجانب التطبيق: 01_Desktop_MoMoLink\\scrcpy",
         )
         add_log("مسارات البحث عن scrcpy:")
         for path in _tool_dirs():
@@ -1231,7 +1231,7 @@ def main(page: ft.Page) -> None:
 
     # نضمن ظهور النافذة في نسخة .exe (عطل PyInstaller المعروف — موثَّق أعلى الدالة).
     if getattr(sys, "frozen", False):
-        _force_show_window("SkyLink Desktop Pro")
+        _force_show_window("MoMoLink Desktop Pro")
 
 
 def _force_show_window(window_title_prefix: str) -> None:

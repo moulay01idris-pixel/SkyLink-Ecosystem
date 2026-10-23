@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-اختبارات منطق النواة في SkyLink Desktop (بدون فتح الواجهة).
+اختبارات منطق النواة في MoMoLink Desktop (بدون فتح الواجهة).
 
 يشغّل هذا الملف الدوال النقية فقط:
   * parse_target / clean_host  ← التحقق من العنوان (خط الدفاع ضد حقن الأوامر)
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sys
 
-import skylink_desktop as core
+import momolink_desktop as core
 
 
 passed = 0
@@ -112,7 +112,7 @@ def test_adb_smoke() -> None:
 
 def main() -> int:
     print("=" * 62)
-    print(" اختبارات نواة SkyLink Desktop")
+    print(" اختبارات نواة MoMoLink Desktop")
     print("=" * 62)
     test_valid_targets()
     test_injection_rejected()

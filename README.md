@@ -1,4 +1,4 @@
-# SkyLink Ecosystem 🚀
+# MoMoLink Ecosystem 🚀
 
 منظومة كاملة لبث شاشة هاتف أندرويد والتحكم بها من الحاسوب — **بضغطة زر واحدة**،
 بدون أي نافذة سوداء، وبدون كتابة أوامر.
@@ -11,8 +11,9 @@
 
 | المجلد | ماذا بداخله |
 |---|---|
-| `01_Desktop_SkyLink/` | **تطبيق الحاسوب** (Flet) + `scrcpy` مدمجة + ملفات بناء `.exe` |
-| `02_Android_SkyLinkConnect/` | **تطبيق الهاتف** (KivyMD) + `buildozer.spec` لبناء APK |
+| `01_Desktop_MoMoLink/` | **تطبيق الحاسوب** (Flet) + `scrcpy` مدمجة + ملفات بناء `.exe` |
+| `02_Android_MoMoLinkConnect/` | **تطبيق الهاتف** (KivyMD) + `buildozer.spec` لبناء APK |
+| `03_Remote_Control/` | **MoMoLink Remote**: تحكّم بالحاسوب من الهاتف + نقل ملفات + حافظة مشتركة |
 | `.github/workflows/build.yml` | بناء سحابي تلقائي: APK + macOS .app + Windows .exe |
 | `README.md` | هذا الملف |
 
@@ -20,7 +21,7 @@
 
 ## 2) تشغيل تطبيق الحاسوب (الأسهل)
 
-1. افتح المجلد `01_Desktop_SkyLink`
+1. افتح المجلد `01_Desktop_MoMoLink`
 2. انقر مرتين على **`run_desktop.bat`**
 3. عند أول تشغيل فقط: سيثبّت المكتبات تلقائياً (يحتاج إنترنت مرة واحدة، دقيقة تقريباً)
 4. ستفتح الواجهة مباشرة
@@ -41,10 +42,10 @@
 انقر مرتين على:
 
 ```
-01_Desktop_SkyLink\build_exe.bat
+01_Desktop_MoMoLink\build_exe.bat
 ```
 
-الناتج: `01_Desktop_SkyLink\dist\SkyLinkDesktopPro.exe`
+الناتج: `01_Desktop_MoMoLink\dist\MoMoLinkDesktopPro.exe`
 
 - ملف **واحد مستقل** — ينسخ إلى أي حاسوب ويندوز ويعمل بدون تثبيت بايثون.
 - **بلا نافذة تيرمنال سوداء** (`--windowed`).
@@ -52,15 +53,15 @@
 - **scrcpy مدمجة** داخله، وتُستخرج تلقائياً عند التشغيل.
 - **الحجم المتوقع:** ~130 م.ب (لأن عميل Flet الرسومي ~97 م.ب مدمج ليَعمل بلا إنترنت).
 
-الأمر المكافئ يدوياً (من داخل مجلد `01_Desktop_SkyLink`):
+الأمر المكافئ يدوياً (من داخل مجلد `01_Desktop_MoMoLink`):
 
 ```bat
 py -m PyInstaller --noconfirm --clean --onefile --windowed ^
-  --name SkyLinkDesktopPro ^
+  --name MoMoLinkDesktopPro ^
   --icon "assets\icon.ico" ^
   --add-data "scrcpy;scrcpy" ^
   --collect-all flet --collect-all flet_desktop ^
-  skylink_desktop.py
+  momolink_desktop.py
 ```
 
 ---
@@ -69,22 +70,22 @@ py -m PyInstaller --noconfirm --clean --onefile --windowed ^
 
 أنت على ويندوز ولا تحتاج Buildozer محلياً — **GitHub يبني لك**:
 
-1. افتح **GitHub Desktop** ← `File` ← `Add local repository` ← اختر مجلد `SkyLink-Ecosystem`
-2. أنشئ مستودعاً جديداً باسم `SkyLink-Ecosystem` وارفع الملفات (Public أو Private، الاثنان مجانيان)
+1. افتح **GitHub Desktop** ← `File` ← `Add local repository` ← اختر مجلد `MoMoLink-Ecosystem`
+2. أنشئ مستودعاً جديداً باسم `MoMoLink-Ecosystem` وارفع الملفات (Public أو Private، الاثنان مجانيان)
 3. اضغط **Push origin**
 4. اذهب إلى موقع المستودع ← تبويب **Actions**
-5. اختر **Build SkyLink** ← زر **Run workflow** ← **Run**
+5. اختر **Build MoMoLink** ← زر **Run workflow** ← **Run**
 6. انتظر (أول مرة ~40–60 دقيقة، والمرات التالية ~10 دقائق بفضل التخزين المؤقت)
 7. حمّل الملفات من قسم **Artifacts** في أسفل صفحة التشغيل:
-   - `SkyLinkConnect-APK` → ملفات `.apk`
-   - `SkyLink-macOS-App` → ملف `.app` مضغوط
-   - `SkyLink-Windows-EXE` → ملف `.exe` مضغوط
+   - `MoMoLinkConnect-APK` → ملفات `.apk`
+   - `MoMoLink-macOS-App` → ملف `.app` مضغوط
+   - `MoMoLink-Windows-EXE` → ملف `.exe` مضغوط
 
 > **مهم:** لا ترفع ملف `.env` ولا أي مفتاح — المشروع لا يحتوي أي مفاتيح أصلاً.
 
 ### تثبيت الـ APK على الهاتف
 
-1. انسخ `SkyLinkConnect-1.0.0-...apk` إلى الهاتف
+1. انسخ `MoMoLinkConnect-1.0.0-...apk` إلى الهاتف
 2. افتحه ← قد يطلب السماح بـ«التثبيت من مصادر غير معروفة» ← اسمح
 3. ثبّت وافتح
 
@@ -104,7 +105,26 @@ py -m PyInstaller --noconfirm --clean --onefile --windowed ^
 
 ---
 
-## 6) حل المشاكل (أشهر 6 حالات)
+## 6) MoMoLink Remote — التحكم بحاسوبك من الهاتف (الاتجاه المعاكس)
+
+في `03_Remote_Control/` يوجد نظام مستقل يعمل داخل **شبكة البيت فقط**:
+
+| القدرة | التشغيل | ماذا تفعل |
+|---|---|---|
+| **📁 نقل الملفات** (الأهم والأسرع) | `run_bridge.bat` | صفحة عربية من متصفح الهاتف: تصفح مجلدات الحاسوب · رفع بالسحب · تنزيل · حذف آمن |
+| **📋 حافظة مشتركة** | `run_bridge.bat` | تنسخ نصاً في ChatGPT على الهاتف ← تلصقه في الصفحة ← `Ctrl+V` على الحاسوب |
+| **🖥️ تحكم كامل بالحاسوب** | `enable_rdp.bat` | سطح المكتب البعيد المدمج في ويندوز + تطبيق Microsoft Remote Desktop على الهاتف |
+
+**البداية:** انقر مرتين على `03_Remote_Control\run_bridge.bat` ← تُفتح الصفحة تلقائياً ←
+امسح رمز QR بكاميرا الهاتف. التفاصيل الكاملة في `03_Remote_Control/README_REMOTE.md`.
+
+**مُختبَر فعلياً:** 42/42 اختبار واجهة برمجية + 8/8 اختبار من داخل المتصفح (رفع 176 ك.ب وتنزيله
+وتطابق المحتوى العربي بايت ببايت) + 4 لقطات شاشة حقيقية بمقاس هاتف.
+**لم يُختبر:** التجربة من هاتف حقيقي · تفعيل RDP (يحتاج نقرتك وموافقتك).
+
+---
+
+## 7) حل المشاكل (أشهر 6 حالات)
 
 | المشكلة | السبب | الحل |
 |---|---|---|
@@ -117,10 +137,10 @@ py -m PyInstaller --noconfirm --clean --onefile --windowed ^
 
 ---
 
-## 7) الصدق الهندسي — ما تم اختباره وما لم يُختبر
+## 8) الصدق الهندسي — ما تم اختباره وما لم يُختبر
 
 **مُختبَر فعلياً على جهازك (ويندوز 11 · بايثون 3.14 · Flet 1.0.5):**
-- ✅ **بناء `SkyLinkDesktopPro.exe` بنجاح** (171.8 م.ب) وتشغيله فعلياً
+- ✅ **بناء `MoMoLinkDesktopPro.exe` بنجاح** (171.8 م.ب) وتشغيله فعلياً
 - ✅ **الواجهة تعمل عربية بالكامل RTL**، الوضع الداكن، بدون أي استثناء
 - ✅ **إظهار نافذة الـ exe** — عُثر على عطل حقيقي وأُصلح: نافذة Flet كانت تُنشأ **مخفية**
   (`IsWindowVisible = False`) لأن مُحمّل PyInstaller يمرّر حالة `SW_HIDE` للعمليات الابنة.
@@ -143,7 +163,7 @@ py -m PyInstaller --noconfirm --clean --onefile --windowed ^
 
 ---
 
-## 8) ملاحظات أمنية هندسية (مطبقة فعلاً)
+## 9) ملاحظات أمنية هندسية (مطبقة فعلاً)
 
 - لا استخدام لـ `shell=True` إطلاقاً ⇒ **يستحيل حقن أوامر** عبر حقل IP.
 - كل IP يُمرَّر عبر `ipaddress` قبل أي أمر (يرفض `; | & $` والمسافات).
@@ -154,12 +174,12 @@ py -m PyInstaller --noconfirm --clean --onefile --windowed ^
 
 ---
 
-## 9) المتطلبات
+## 10) المتطلبات
 
 **الحاسوب:** ويندوز 10/11 (أو macOS للنسخة السحابية) · بايثون 3.10+ إن أردت التشغيل من الكود
 **الهاتف:** أندرويد 5.0+ (API 21) · تصحيح أخطاء USB مفعّل
 
-`01_Desktop_SkyLink/requirements.txt`:
+`01_Desktop_MoMoLink/requirements.txt`:
 ```
 flet==1.0.5
 ```

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
- SkyLink Connect  —  v1.0.0
+ MoMoLink Connect  —  v1.0.0
 --------------------------------------------------------------------------------
- تطبيق الهاتف المساعد لمنظومة SkyLink Ecosystem.
+ تطبيق الهاتف المساعد لمنظومة MoMoLink Ecosystem.
 
  الوظيفة:
    * يعرض عنوان IP المحلي للهاتف بخط ضخم جداً (يسهل قراءته من بعيد).
@@ -246,8 +246,8 @@ def hint(text: str, size: str = "13sp", color=MUTED_HEX) -> AutoLabel:
 # 4) التطبيق
 # ==============================================================================
 
-class SkyLinkConnect(MDApp):
-    title = "SkyLink Connect"
+class MoMoLinkConnect(MDApp):
+    title = "MoMoLink Connect"
     ip_text = "—"
 
     # ------------------------------------------------------------------ البناء
@@ -264,7 +264,7 @@ class SkyLinkConnect(MDApp):
         # ------------------------------------------------------ الشريط العلوي
         root.add_widget(
             MDTopAppBar(
-                title="SkyLink Connect",
+                title="MoMoLink Connect",
                 elevation=2,
                 left_action_items=[["cellphone-link", lambda *_: None]],
             )
@@ -292,7 +292,7 @@ class SkyLinkConnect(MDApp):
         main_card.bind(minimum_height=main_card.setter("height"))
 
         main_card.add_widget(
-            AutoLabel(text="SkyLink Connect", font_style="H5", bold=True,
+            AutoLabel(text="MoMoLink Connect", font_style="H5", bold=True,
                       theme_text_color="Custom", text_color=ACCENT_HEX,
                       font_size="24sp")
         )
@@ -373,7 +373,7 @@ class SkyLinkConnect(MDApp):
             "١ · اضغط الزر الكبير وافتح «خيارات المطوّر».",
             "٢ · فعّل «تصحيح أخطاء USB» (Debugging).",
             "٣ · للأجهزة الحديثة: فعّل «التصحيح اللاسلكي» واكتب رقم المنفذ مع عنوان IP.",
-            "٤ · على الحاسوب: افتح SkyLink Desktop، اختر Wi-Fi، واكتب هذا العنوان.",
+            "٤ · على الحاسوب: افتح MoMoLink Desktop، اختر Wi-Fi، واكتب هذا العنوان.",
             "٥ · اضغط «بث ومشاركة الشاشة الآن» وستظهر شاشة الهاتف على الحاسوب.",
         ]
         for line in steps:
@@ -454,4 +454,4 @@ class SkyLinkConnect(MDApp):
 
 
 if __name__ == "__main__":
-    SkyLinkConnect().run()
+    MoMoLinkConnect().run()

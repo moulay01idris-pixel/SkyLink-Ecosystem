@@ -1,7 +1,7 @@
 @echo off
 rem English only on purpose: Arabic text inside .bat breaks cmd parsing.
 chcp 65001 >nul 2>&1
-title SkyLink Remote
+title MoMoLink Remote
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
@@ -32,10 +32,10 @@ if errorlevel 1 (
 )
 
 rem ---------- open firewall port 8756 for the home network only ----------
-%PY% "%~dp0skylink_admin.py" firewall --no-wait
+%PY% "%~dp0momolink_admin.py" firewall --no-wait
 
 rem ---------- run the bridge (browser opens automatically) ----------
-%PY% "%~dp0skylink_bridge.py"
+%PY% "%~dp0momolink_bridge.py"
 
 echo.
 echo Bridge stopped.

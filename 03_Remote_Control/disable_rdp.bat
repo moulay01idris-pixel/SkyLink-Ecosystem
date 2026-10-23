@@ -1,7 +1,7 @@
 @echo off
 rem English only on purpose: Arabic text inside .bat breaks cmd parsing.
 chcp 65001 >nul 2>&1
-title SkyLink Remote - Disable Remote Desktop (RDP)
+title MoMoLink Remote - Disable Remote Desktop (RDP)
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
@@ -21,5 +21,5 @@ if not defined PY (
     exit /b 1
 )
 
-%PY% "%~dp0skylink_admin.py" disable-rdp
+%PY% "%~dp0momolink_admin.py" disable-rdp
 endlocal

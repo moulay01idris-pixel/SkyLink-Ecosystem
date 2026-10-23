@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
- SkyLink Remote Bridge  —  v1.0.0
+ MoMoLink Remote Bridge  —  v1.0.0
 --------------------------------------------------------------------------------
 جسر عربي بين حاسوبك وهاتفك، يعمل داخل شبكة البيت فقط:
 
@@ -19,7 +19,7 @@
    * لا إرسال أي بيانات إلى أي خادم خارجي — كل شيء داخل جهازك.
 
  التشغيل:
-   python skylink_bridge.py
+   python momolink_bridge.py
    أو: run_bridge.bat   (يجهّز كل شيء تلقائياً)
 ================================================================================
 """
@@ -57,7 +57,7 @@ from fastapi.responses import (
 # 0) إعدادات عامة
 # ==============================================================================
 
-APP_NAME = "SkyLink Remote"
+APP_NAME = "MoMoLink Remote"
 APP_VERSION = "1.0.0"
 PORT = 8756
 
@@ -101,9 +101,9 @@ MAX_UPLOAD_MB = 2048          # 2 غيغابايت للملف الواحد
 MAX_CLIP_CHARS = 200_000      # حماية من نص ضخم يُغرق الحافظة
 
 CONFIG_DIR = (
-    Path(os.environ.get("APPDATA", Path.home())) / "SkyLink"
+    Path(os.environ.get("APPDATA", Path.home())) / "MoMoLink"
     if IS_WINDOWS
-    else Path.home() / ".skylink"
+    else Path.home() / ".momolink"
 )
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -424,7 +424,7 @@ app = FastAPI(title=f"{APP_NAME} {APP_VERSION}", docs_url=None, redoc_url=None)
 
 
 def _authorized(request: Request) -> bool:
-    cookie = request.cookies.get("skylink_token", "")
+    cookie = request.cookies.get("momolink_token", "")
     query = request.query_params.get("t", "")
     return secrets.compare_digest(cookie, TOKEN) or secrets.compare_digest(query, TOKEN)
 
@@ -441,7 +441,7 @@ async def guard(request: Request, call_next):
         if secrets.compare_digest(request.query_params["t"], TOKEN):
             response = RedirectResponse(url="/", status_code=303)
             response.set_cookie(
-                "skylink_token", TOKEN, max_age=60 * 60 * 24 * 30,
+                "momolink_token", TOKEN, max_age=60 * 60 * 24 * 30,
                 httponly=True, samesite="lax",
             )
             return response
@@ -807,7 +807,7 @@ footer{text-align:center;padding:18px 14px 26px;color:#5B6B88;font-size:10px}
 <body>
 __BODY__
 <div class="toast" id="toast"></div>
-<footer>SkyLink Remote __VERSION__ · كل شيء داخل شبكتك المحلية · لا يخرج أي بيانات</footer>
+<footer>MoMoLink Remote __VERSION__ · كل شيء داخل شبكتك المحلية · لا يخرج أي بيانات</footer>
 <script>
 __SCRIPT__
 </script>

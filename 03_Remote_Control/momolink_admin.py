@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
- SkyLink Admin — v1.0.0
+ MoMoLink Admin — v1.0.0
 --------------------------------------------------------------------------------
-أدوات صيانة جسر SkyLink Remote، مع رسائل عربية سليمة (بعيداً عن مشاكل ترميز cmd):
+أدوات صيانة جسر MoMoLink Remote، مع رسائل عربية سليمة (بعيداً عن مشاكل ترميز cmd):
 
     status       عرض حالة كل شيء (IP · الجسر · RDP · جدار الحماية)
     firewall     التأكد من فتح المنفذ 8756 لشبكة البيت فقط
@@ -28,8 +28,8 @@ import sys
 
 IS_WINDOWS = os.name == "nt"
 TS_KEY = r"SYSTEM\CurrentControlSet\Control\Terminal Server"
-BRIDGE_RULE = "SkyLink Bridge 8756"
-RDP_RULE = "SkyLink RDP (LAN only)"
+BRIDGE_RULE = "MoMoLink Bridge 8756"
+RDP_RULE = "MoMoLink RDP (LAN only)"
 BRIDGE_PORT = 8756
 RDP_PORT = 3389
 
@@ -166,7 +166,7 @@ def rdp_enabled() -> bool:
 def cmd_status() -> int:
     say()
     say("=" * 68)
-    say("   SkyLink Remote — حالة الاتصال")
+    say("   MoMoLink Remote — حالة الاتصال")
     say("=" * 68)
     say()
     say(f"  اسم الحاسوب : {socket.gethostname()}")

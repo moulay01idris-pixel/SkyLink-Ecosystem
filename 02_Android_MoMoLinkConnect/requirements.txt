@@ -1,4 +1,4 @@
-# متطلبات تطبيق الهاتف SkyLink Connect
+# متطلبات تطبيق الهاتف MoMoLink Connect
 #
 # ملاحظة: عند بناء APK عبر Buildozer لا تُستخدم هذه القائمة —
 # Buildozer يقرأ المتطلبات من السطر requirements داخل ملف buildozer.spec.

@@ -1,4 +1,4 @@
-# SkyLink Connect — تطبيق الهاتف
+# MoMoLink Connect — تطبيق الهاتف
 
 تطبيق أندرويد خفيف يعرض عنوان IP المحلي للهاتف بخط كبير جداً، ويفتح «خيارات المطوّر» مباشرةً.
 
@@ -17,11 +17,11 @@
 ## البناء عبر GitHub (لا يحتاج أدوات على ويندوز)
 
 1. ارفع المشروع إلى GitHub
-2. Actions ← **Build SkyLink** ← **Run workflow**
+2. Actions ← **Build MoMoLink** ← **Run workflow**
 3. انتظر انتهاء المهمة `Android APK (Buildozer)`
-4. حمّل `SkyLinkConnect-APK` من Artifacts
+4. حمّل `MoMoLinkConnect-APK` من Artifacts
 
-الملف الناتج: `bin/skylinkconnect-1.0.0-arm64-v8a_armeabi-v7a-debug.apk`
+الملف الناتج: `bin/momolinkconnect-1.0.0-arm64-v8a_armeabi-v7a-debug.apk`
 
 ---
 
@@ -31,7 +31,7 @@
 sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
     zlib1g-dev libncurses-dev libncursesw5-dev cmake libffi-dev libssl-dev
 python -m pip install "cython==0.29.36" buildozer
-cd 02_Android_SkyLinkConnect
+cd 02_Android_MoMoLinkConnect
 buildozer -v android debug
 ```
 
@@ -40,12 +40,12 @@ buildozer -v android debug
 ### نسخة موقّعة للنشر على Google Play (release)
 
 ```bash
-keytool -genkey -v -keystore skylink.keystore -alias skylink -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore momolink.keystore -alias momolink -keyalg RSA -keysize 2048 -validity 10000
 buildozer -v android release
-apksigner sign --ks skylink.keystore --out skylinkconnect-release.apk bin/skylinkconnect-1.0.0-*-release-unsigned.apk
+apksigner sign --ks momolink.keystore --out momolinkconnect-release.apk bin/momolinkconnect-1.0.0-*-release-unsigned.apk
 ```
 
-ثم ارفع مفتاح `skylink.keystore` كـ Secret في GitHub باسم `ANDROID_KEYSTORE_BASE64`
+ثم ارفع مفتاح `momolink.keystore` كـ Secret في GitHub باسم `ANDROID_KEYSTORE_BASE64`
 إن أردت بناء release تلقائياً (غير مضاف حالياً في `build.yml` عن قصد — أضفه عند الحاجة).
 
 ---
