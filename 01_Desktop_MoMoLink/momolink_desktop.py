@@ -127,15 +127,31 @@ def _config_dir() -> Path:
 
 CONFIG_PATH = _config_dir() / "config.json"
 
+#: نسخة الإعدادات — رفعها يفرض قيم جودة جديدة على من جرّب نسخة أقدم.
+CONFIG_VERSION = "2"
+
 DEFAULT_CONFIG: dict = {
     "mode": "usb",           # "usb" | "wifi"
     "last_ip": "",
-    "max_size": "",          # مثال "1024" — فارغ = الأبعاد الأصلية
-    "bitrate": "8",          # ميغابت/ثانية
+    "quality": "high",       # high | medium | low
+    "max_size": "1280",      # أقصى بعد بالبكسل — "": الأبعاد الأصلية
+    "bitrate": "16",         # ميغابت/ثانية — أعلى = صورة أوضح
+    "max_fps": "60",         # أقصى إطارات/ثانية
     "turn_screen_off": False,
     "stay_awake": True,
-    "no_audio": False,
+    "no_audio": True,        # الصوت يستهلك معالجاً — يُفتح عند الحاجة
+    "config_version": CONFIG_VERSION,
 }
+
+#: كل مستوى جودة يضبط ثلاثة أرقام معاً (والباقي يبقى كما هو).
+QUALITY_PRESETS: dict = {
+    "high":   {"max_size": "1280", "bitrate": "16", "max_fps": "60"},
+    "medium": {"max_size": "1024", "bitrate": "8",  "max_fps": "30"},
+    "low":    {"max_size": "720",  "bitrate": "3",  "max_fps": "30"},
+}
+
+#: حقول الجودة التي تُعاد لقيمها الجديدة عند ترقية الإعدادات من نسخة أقدم.
+_QUALITY_KEYS = ("quality", "max_size", "bitrate", "max_fps", "no_audio")
 
 
 def load_config() -> dict:
@@ -147,12 +163,18 @@ def load_config() -> dict:
             # وإلا فشلت قراءة ملف الإعدادات بصمت وعاد التطبيق للقيم الافتراضية.
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
             if isinstance(data, dict):
+                # ملف قديم (قبل v2) كان يحفظ 8 ميغابت ودقة أصلية ⇒ صورة رديئة.
+                # عند الترقية نتجاهل قيم الجودة المحفوظة ونأخذ الجديدة.
+                same_version = str(data.get("config_version", "1")) == CONFIG_VERSION
                 for key, default in DEFAULT_CONFIG.items():
+                    if not same_version and key in _QUALITY_KEYS:
+                        continue
                     value = data.get(key, default)
                     if isinstance(default, bool):
                         cfg[key] = bool(value)
                     elif isinstance(default, str):
                         cfg[key] = str(value)
+                cfg["config_version"] = CONFIG_VERSION
     except Exception:
         pass
     return cfg
@@ -486,6 +508,10 @@ class MoMoLinkEngine:
         if bitrate.isdigit() and int(bitrate) > 0:
             args.append(f"--video-bit-rate={int(bitrate)}M")
 
+        fps = str(self._opts.get("max_fps") or "").strip()
+        if fps.isdigit() and int(fps) > 0:
+            args.append(f"--max-fps={int(fps)}")
+
         if self._opts.get("turn_screen_off"):
             args.append("--turn-screen-off")
         if self._opts.get("stay_awake"):
@@ -747,6 +773,7 @@ def main(page: ft.Page) -> None:
         "mode": cfg.get("mode", "usb"),
         "advanced_open": False,
         "busy": False,
+        "quality": cfg.get("quality", "high"),
     }
 
     # ------------------------------------------------------- تحديث آمن للواجهة
@@ -912,11 +939,60 @@ def main(page: ft.Page) -> None:
         on_change=lambda e: persist(),
     )
     adv_bitrate = ft.TextField(
-        label="الجودة (ميغابت/ث)", value=str(cfg.get("bitrate", "8")),
+        label="الجودة (ميغابت/ث)", value=str(cfg.get("bitrate", "16")),
         dense=True, bgcolor="#0B1424", border=_input_border(10),
         text_style=ft.TextStyle(color=TEXT_MAIN, size=12),
         label_style=ft.TextStyle(color=TEXT_MUTED, size=10),
         on_change=lambda e: persist(),
+    )
+    adv_fps = ft.TextField(
+        label="إطارات/ثانية", value=str(cfg.get("max_fps", "60")),
+        dense=True, bgcolor="#0B1424", border=_input_border(10),
+        text_style=ft.TextStyle(color=TEXT_MAIN, size=12),
+        label_style=ft.TextStyle(color=TEXT_MUTED, size=10),
+        on_change=lambda e: persist(),
+    )
+
+    quality_hint = ft.Text("", size=10, color=TEXT_MUTED)
+
+    def _quality_click(level: str):
+        """يضبط الأرقام الثلاثة دفعة واحدة (لا يترك المستخدم يخمّن)."""
+        def handler(e=None) -> None:
+            preset = QUALITY_PRESETS.get(level, QUALITY_PRESETS["high"])
+            state["quality"] = level
+            adv_max.value = preset["max_size"]
+            adv_bitrate.value = preset["bitrate"]
+            adv_fps.value = preset["max_fps"]
+            quality_hint.value = (
+                f"{preset['max_size']} بكسل · "
+                f"{preset['bitrate']} م.ب/ث · {preset['max_fps']} إطار/ث"
+            )
+            persist()
+            safe_update()
+        return handler
+
+    def _quality_button(text: str, level: str, primary: bool) -> ft.Button:
+        return ft.Button(
+            content=ft.Text(
+                text, size=11,
+                color="#04121B" if primary else TEXT_MAIN,
+                weight=ft.FontWeight.BOLD if primary else None,
+            ),
+            bgcolor=ACCENT if primary else "#16233A",
+            height=32,
+            expand=True,
+            on_click=_quality_click(level),
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
+        )
+
+    quality_row = ft.Row([
+        _quality_button("⭐ عالية", "high", True),
+        _quality_button("متوسطة", "medium", False),
+        _quality_button("اقتصادية", "low", False),
+    ], spacing=6)
+    quality_hint.value = (
+        f"{adv_max.value or 'الأبعاد الأصلية'} بكسل · "
+        f"{adv_bitrate.value} م.ب/ث · {adv_fps.value} إطار/ث"
     )
     sw_screen_off = ft.Switch(
         label="إبقاء شاشة الهاتف مطفأة أثناء البث",
@@ -939,7 +1015,7 @@ def main(page: ft.Page) -> None:
 
     advanced_panel = ft.Container(
         content=ft.Column([
-            ft.Row([adv_max, adv_bitrate], spacing=10),
+            ft.Row([adv_max, adv_bitrate, adv_fps], spacing=8),
             sw_awake, sw_screen_off, sw_noaudio,
         ], spacing=6),
         visible=False,
@@ -957,8 +1033,10 @@ def main(page: ft.Page) -> None:
     # ============================================================ المحرّك
     def collect_options() -> dict:
         return {
+            "quality": state.get("quality", "high"),
             "max_size": adv_max.value or "",
             "bitrate": adv_bitrate.value or "",
+            "max_fps": adv_fps.value or "",
             "turn_screen_off": bool(sw_screen_off.value),
             "stay_awake": bool(sw_awake.value),
             "no_audio": bool(sw_noaudio.value),
@@ -968,6 +1046,7 @@ def main(page: ft.Page) -> None:
         save_config({
             "mode": state["mode"],
             "last_ip": ip_field.value or "",
+            "config_version": CONFIG_VERSION,
             **collect_options(),
         })
 
@@ -1148,6 +1227,14 @@ def main(page: ft.Page) -> None:
             hint_wifi,
 
             ft.Row([
+                ft.Text("٢ · جودة الصورة", size=12,
+                        weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+                ft.Container(content=quality_hint, expand=True,
+                             alignment=ft.Alignment.CENTER_RIGHT),
+            ], spacing=8),
+            quality_row,
+
+            ft.Row([
                 ft.Icon(icon=ft.Icons.TUNE, size=14, color=TEXT_MUTED),
                 ft.Container(content=adv_text, ink=True, on_click=toggle_advanced,
                              padding=ft.Padding.symmetric(horizontal=4, vertical=2)),
@@ -1162,7 +1249,7 @@ def main(page: ft.Page) -> None:
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(icon=ft.Icons.INFO_OUTLINE, size=14, color=ACCENT),
-                        ft.Text("دليل سريع · ٣ خطوات", size=11,
+                        ft.Text("دليل سريع · ٤ خطوات", size=11,
                                 weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
                     ], spacing=6),
                     ft.Text("١ · على الهاتف: الإعدادات ← حول الهاتف ← اضغط «رقم البنية» ٧ مرات "
@@ -1171,6 +1258,8 @@ def main(page: ft.Page) -> None:
                             size=10, color=TEXT_MUTED),
                     ft.Text("٣ · للاسلكي: فعّل «التصحيح اللاسلكي» واكتب عنوان IP الظاهر في "
                             "تطبيق MoMoLink Connect.", size=10, color=TEXT_MUTED),
+                    ft.Text("٤ · لنقل الملفات وتبادل الحافظة: شغّل 03_Remote_Control\\run_bridge.bat "
+                            "ثم امسح رمز QR بكاميرا الهاتف.", size=10, color=TEXT_MUTED),
                 ], spacing=5),
                 padding=12, border_radius=12, bgcolor="#0A1322",
                 border=ft.Border.all(1, BORDER),
