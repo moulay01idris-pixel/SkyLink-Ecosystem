@@ -76,7 +76,7 @@ import flet as ft
 # ==============================================================================
 
 APP_NAME = "MoMoLink Desktop Pro"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 # عنوان شريط النافذة: بلا رموز تعبيرية لأن ويندوز لا يرسمها في شريط العنوان
 # فكانت تظهر «??» — والرمز 🚀 موجود في عنوان الواجهة الداخلية أدناه.
 WINDOW_TITLE = "MoMoLink Desktop Pro"
@@ -145,6 +145,11 @@ DEFAULT_CONFIG: dict = {
     "turn_screen_off": False,
     "stay_awake": True,
     "no_audio": True,        # الصوت يستهلك معالجاً — يُفتح عند الحاجة
+    # وضع لوحة المفاتيح:
+    #   sdk  = scrcpy يرسل رموز الأزرار كما هي (الافتراضي، والأسرع).
+    #   uhid = الهاتف يرى لوحة مفاتيح فيزيائية فيطبّق تخطيطه هو على الأزرار
+    #          (يحلّ «تكتب a فيظهر q» على لوحة AZERTY الفرنسية).
+    "keyboard": "sdk",
     "config_version": CONFIG_VERSION,
 }
 
@@ -157,6 +162,12 @@ QUALITY_PRESETS: dict = {
 
 #: حقول الجودة التي تُعاد لقيمها الجديدة عند ترقية الإعدادات من نسخة أقدم.
 _QUALITY_KEYS = ("quality", "max_size", "bitrate", "max_fps", "no_audio")
+
+#: شرح وضعَي لوحة المفاتيح — يظهر تحت الزرّين مباشرةً.
+KB_MODE_HINTS: dict = {
+    "sdk": "sdk: أسرع، لكن الضغط على الأزرار يخرج حروفاً لاتينية (لا عربية).",
+    "uhid": "uhid: الهاتف يطبّق تخطيطه هو — يُصلح انقلاب الأحرف على لوحة AZERTY.",
+}
 
 
 def load_config() -> dict:
@@ -573,6 +584,177 @@ def clean_host(raw: str) -> Optional[str]:
 
 
 # ==============================================================================
+# 3.5) أدوات ويندوز: الحافظة + إرسال Ctrl+V (لإرسال نص عربي إلى الهاتف)
+# ==============================================================================
+#
+# لماذا لا تُكتب العربية مباشرةً من لوحة مفاتيح الحاسوب؟
+#   scrcpy يرسل «أزراراً فيزيائية» (رموز مفاتيح)، والهاتف يترجمها بتخطيطه
+#   اللاتيني الافتراضي (US) — فيخرج حرف لاتيني دائماً، ولا يؤثر تغيير لغة
+#   الحاسوب أو لغة لوحة مفاتيح الهاتف. الحل المضمون هو «الحافظة»: نضع النص
+#   العربي في حافظة الحاسوب، ثم نضغط Ctrl+V داخل نافذة البث، فيضع scrcpy
+#   النص في حافظة الهاتف ويلصقه كما هو (Unicode كامل: عربي/إيموجي/رموز).
+
+
+def set_clipboard_text(text: str) -> bool:
+    """يضع نصاً في حافظة ويندوز (UTF-16) — يعيد True عند النجاح."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        # أنواع صريحة إلزامية على 64-بت: بدونها يُقصّ مقبض الذاكرة إلى 32 بت.
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.EmptyClipboard.argtypes = []
+        user32.EmptyClipboard.restype = wintypes.BOOL
+        user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+        user32.SetClipboardData.restype = wintypes.HANDLE
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = wintypes.BOOL
+
+        kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = wintypes.LPVOID
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalUnlock.restype = wintypes.BOOL
+        kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalFree.restype = wintypes.HGLOBAL
+
+        CF_UNICODETEXT = 13
+        GMEM_MOVEABLE = 0x0002
+
+        # النص بصيغة UTF-16LE مع إنهاء مزدوج (شرط CF_UNICODETEXT).
+        payload = text.encode("utf-16-le") + b"\x00\x00"
+
+        if not user32.OpenClipboard(None):
+            return False
+        try:
+            user32.EmptyClipboard()
+            handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(payload))
+            if not handle:
+                return False
+            pointer = kernel32.GlobalLock(handle)
+            if not pointer:
+                kernel32.GlobalFree(handle)
+                return False
+            try:
+                ctypes.memmove(pointer, payload, len(payload))
+            finally:
+                kernel32.GlobalUnlock(handle)
+            # بعد SetClipboardData يملك النظام الذاكرة — لا نحرّرها.
+            if not user32.SetClipboardData(CF_UNICODETEXT, handle):
+                kernel32.GlobalFree(handle)
+                return False
+            return True
+        finally:
+            user32.CloseClipboard()
+    except Exception:
+        return False
+
+
+def _send_ctrl_v() -> bool:
+    """يرسل ضغطة Ctrl+V حقيقية إلى النافذة النشطة (SendInput)."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+        ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", wintypes.WORD),
+                ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ULONG_PTR),
+            ]
+
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [
+                ("dx", wintypes.LONG),
+                ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ULONG_PTR),
+            ]
+
+        class HARDWAREINPUT(ctypes.Structure):
+            _fields_ = [
+                ("uMsg", wintypes.DWORD),
+                ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD),
+            ]
+
+        class _INPUTUNION(ctypes.Union):
+            _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
+
+        class INPUT(ctypes.Structure):
+            _anonymous_ = ("u",)
+            _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_KEYUP = 0x0002
+        VK_CONTROL = 0x11
+        VK_V = 0x56
+
+        events = (INPUT * 4)(
+            INPUT(type=INPUT_KEYBOARD, u=_INPUTUNION(ki=KEYBDINPUT(wVk=VK_CONTROL))),
+            INPUT(type=INPUT_KEYBOARD, u=_INPUTUNION(ki=KEYBDINPUT(wVk=VK_V))),
+            INPUT(type=INPUT_KEYBOARD,
+                  u=_INPUTUNION(ki=KEYBDINPUT(wVk=VK_V, dwFlags=KEYEVENTF_KEYUP))),
+            INPUT(type=INPUT_KEYBOARD,
+                  u=_INPUTUNION(ki=KEYBDINPUT(wVk=VK_CONTROL, dwFlags=KEYEVENTF_KEYUP))),
+        )
+        sent = user32.SendInput(4, ctypes.byref(events), ctypes.sizeof(INPUT))
+        return int(sent) == 4
+    except Exception:
+        return False
+
+
+def _focus_window(hwnd: int, timeout: float = 1.2) -> bool:
+    """
+    يركّز نافذة معيّنة ويؤكّد أنها صارت في المقدمة فعلاً.
+    ويندوز يرفض SetForegroundWindow من برنامج في الخلفية، فنجرّب حيلة
+    ضغطة ALT قصيرة (تجعل النظام يعدّ التغيير مبادرة من المستخدم) ثم نتحقّق.
+    """
+    if not IS_WINDOWS or not hwnd:
+        return False
+    try:
+        import ctypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        VK_MENU = 0x12
+        KEYEVENTF_KEYUP = 0x0002
+
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        if int(user32.GetForegroundWindow() or 0) == hwnd:
+            return True
+
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+        user32.SetForegroundWindow(hwnd)
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if int(user32.GetForegroundWindow() or 0) == hwnd:
+                return True
+            time.sleep(0.08)
+        return False
+    except Exception:
+        return False
+
+
+# ==============================================================================
 # 4) محرّك الاتصال (Backend) — يعمل دائماً داخل خيط منفصل
 # ==============================================================================
 
@@ -670,6 +852,13 @@ class MoMoLinkEngine:
             args.append("--stay-awake")
         if self._opts.get("no_audio"):
             args.append("--no-audio")   # متاح في scrcpy 2.0+ فقط
+
+        # وضع لوحة المفاتيح (scrcpy 2.4+): sdk | uhid | aoa
+        #   uhid يجعل الهاتف يرى لوحة مفاتيح فيزيائية فيطبّق تخطيطه هو،
+        #   فيُصلح انقلاب الأحرف على لوحات AZERTY الفرنسية.
+        keyboard = str(self._opts.get("keyboard") or "sdk").strip().lower()
+        if keyboard in ("sdk", "uhid", "aoa"):
+            args.append(f"--keyboard={keyboard}")
 
         # التسجيل يبدأ مع بدء البث (scrcpy لا يبدأ تسجيلاً في منتصف الجلسة).
         record = str(self._opts.get("record_path") or "").strip()
@@ -1027,6 +1216,102 @@ class MoMoLinkEngine:
             self.status("error", "لم يُحفظ التسجيل",
                         "لم يُنشئ scrcpy ملفاً — راجع «سجل الأحداث» بالأسفل.")
 
+    # ------------------------------------------- إرسال نص عربي إلى الهاتف
+    def _mirror_hwnd(self) -> int:
+        """
+        مقبض نافذة البث — نحدّدها بعملية scrcpy نفسها (لا بالعنوان)،
+        لأن عنوان نافذة التطبيق ونافذة البث متشابهان.
+        """
+        with self._lock:
+            proc = self._scrcpy_proc
+        if proc is None or proc.poll() is not None or not IS_WINDOWS:
+            return 0
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            target = proc.pid
+            found: list[int] = []
+
+            @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            def _callback(hwnd, _lparam):  # noqa: ANN001
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if pid.value == target and user32.IsWindowVisible(hwnd):
+                    found.append(int(hwnd))
+                    return False
+                return True
+
+            user32.EnumWindows(_callback, 0)
+            return found[0] if found else 0
+        except Exception:
+            return 0
+
+    def send_text(self, text: str) -> None:
+        """
+        يرسل نصاً (عربي/إيموجي) إلى الحقل النشط على الهاتف:
+          ١) ينسخ النص إلى حافظة الحاسوب.
+          ٢) يُركّز نافذة البث ويُرسل Ctrl+V — فيضع scrcpy النص في حافظة
+             الهاتف ويلصقه كما هو. (الكتابة حرفاً بحرف لا تُنتج عربية أبداً.)
+        """
+        text = (text or "").strip()
+        if not text:
+            self.status("error", "لا يوجد نص",
+                        "اكتب أو الصق النص في مربع «إرسال نص إلى الهاتف» أولاً.")
+            return
+        if not IS_WINDOWS:
+            self.status("error", "غير مدعوم على هذا النظام",
+                        "إرسال النص التلقائي متاح على ويندوز فقط.")
+            return
+
+        hwnd = self._mirror_hwnd()
+        if not hwnd:
+            self.status("error", "لا نافذة بث مفتوحة",
+                        "اضغط «بث ومشاركة الشاشة الآن»، ثم اضغط داخل حقل الكتابة "
+                        "على الهاتف وأعد الإرسال.")
+            return
+
+        try:
+            import ctypes
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+        except Exception as exc:  # noqa: BLE001
+            self.status("error", "تعذّر الوصول إلى ويندوز", str(exc)[:120])
+            return
+
+        if not set_clipboard_text(text):
+            self.status("error", "تعذّر النسخ إلى الحافظة",
+                        "برنامج آخر يمسك الحافظة — أغلق برامج الحافظة وأعد المحاولة.")
+            return
+
+        previous = int(user32.GetForegroundWindow() or 0)
+        sent = False
+        self.status("working", "جاري إرسال النص…", "Ctrl+V تلقائي إلى نافذة الهاتف")
+        try:
+            focused = _focus_window(hwnd)
+            time.sleep(0.45)
+            # إن فشل التركيز فالضغط سيذهب لبرنامج آخر — لا نرسله أبداً.
+            sent = _send_ctrl_v() if focused else False
+            time.sleep(0.35)
+        finally:
+            if previous:
+                try:
+                    user32.SetForegroundWindow(previous)
+                except Exception:
+                    pass
+
+        if sent:
+            self.log(f"أُرسل نص إلى الهاتف ({len(text)} حرفاً).")
+            self.status("ok", "أُرسل النص ✔",
+                        "إن لم يظهر داخل الحقل: اضغط داخل الحقل على الهاتف ثم Ctrl+V.")
+        elif focused:
+            self.status("error", "تعذّر إرسال Ctrl+V",
+                        "الصق يدوياً: انسخ النص ثم Ctrl+V داخل نافذة البث.")
+        else:
+            self.status("error", "لم أستطع تركيز نافذة البث",
+                        "اضغط على نافذة البث بيدك ثم أعد الإرسال (النص موجود في "
+                        "حافظة الهاتف، يكفي Ctrl+V).")
+
     # ------------------------------------------------------------- تنظيف
     def shutdown(self) -> None:
         """يُنادى عند إغلاق النافذة: إيقاف scrcpy ثم خادم ADB."""
@@ -1082,6 +1367,11 @@ def main(page: ft.Page) -> None:
         "busy": False,
         "quality": cfg.get("quality", "high"),
         "recording": False,
+        "keyboard": (
+            str(cfg.get("keyboard", "sdk"))
+            if str(cfg.get("keyboard", "sdk")) in ("sdk", "uhid")
+            else "sdk"
+        ),
     }
 
     # ------------------------------------------------------- تحديث آمن للواجهة
@@ -1321,10 +1611,49 @@ def main(page: ft.Page) -> None:
         active_color=ACCENT, on_change=lambda e: persist(),
     )
 
+    # -------------------------------------------------- وضع لوحة المفاتيح
+    kb_buttons: dict = {}
+    kb_hint = ft.Text(KB_MODE_HINTS.get(state["keyboard"], ""), size=9, color=TEXT_MUTED)
+
+    def _set_keyboard(mode: str, save: bool = True) -> None:
+        state["keyboard"] = mode
+        for key, button in kb_buttons.items():
+            active = key == mode
+            button.bgcolor = ACCENT if active else "#16233A"
+            try:
+                button.content.color = "#04121B" if active else TEXT_MAIN
+            except Exception:
+                pass
+        kb_hint.value = KB_MODE_HINTS.get(mode, "")
+        if save:
+            persist()
+            safe_update()
+
+    def _kb_button(text: str, mode: str) -> ft.Button:
+        active = state["keyboard"] == mode
+        button = ft.Button(
+            content=ft.Text(text, size=10, color="#04121B" if active else TEXT_MAIN),
+            bgcolor=ACCENT if active else "#16233A",
+            height=30,
+            expand=True,
+            on_click=lambda e, m=mode: _set_keyboard(m),
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=9)),
+        )
+        kb_buttons[mode] = button
+        return button
+
+    kb_row = ft.Row([
+        _kb_button("sdk (افتراضي)", "sdk"),
+        _kb_button("uhid (لوحة فيزيائية)", "uhid"),
+    ], spacing=6)
+
     advanced_panel = ft.Container(
         content=ft.Column([
             ft.Row([adv_max, adv_bitrate, adv_fps], spacing=8),
             sw_awake, sw_screen_off, sw_noaudio,
+            ft.Text("وضع لوحة المفاتيح", size=10, color=TEXT_MUTED),
+            kb_row,
+            kb_hint,
         ], spacing=6),
         visible=False,
         padding=ft.Padding.only(top=8),
@@ -1348,6 +1677,7 @@ def main(page: ft.Page) -> None:
             "turn_screen_off": bool(sw_screen_off.value),
             "stay_awake": bool(sw_awake.value),
             "no_audio": bool(sw_noaudio.value),
+            "keyboard": state.get("keyboard", "sdk"),
         }
 
     def persist() -> None:
@@ -1465,6 +1795,66 @@ def main(page: ft.Page) -> None:
                 os.startfile(str(CAPTURES_DIR))  # type: ignore[attr-defined]
         except Exception as exc:  # noqa: BLE001
             add_log(f"تعذّر فتح مجلد اللقطات: {exc}")
+
+    # ------------------------------------- إرسال نص عربي إلى الهاتف
+    def on_send_text(e=None) -> None:
+        value = (send_field.value or "").strip()
+        if not value:
+            set_status("error", "لا يوجد نص",
+                       "اكتب النص في المربع ثم اضغط «أرسل إلى الهاتف».")
+            try:
+                send_field.focus()
+            except Exception:
+                pass
+            return
+        engine.set_options(collect_options())
+        threading.Thread(target=engine.send_text, args=(value,), daemon=True).start()
+
+    send_field = ft.TextField(
+        hint_text="اكتب أو الصق نصاً عربياً هنا…",
+        multiline=True,
+        min_lines=1,
+        max_lines=3,
+        bgcolor="#0B1424",
+        border=_input_border(12),
+        color=TEXT_MAIN,
+        text_style=ft.TextStyle(color=TEXT_MAIN, size=13),
+        hint_style=ft.TextStyle(color=TEXT_MUTED, size=11),
+        content_padding=10,
+    )
+
+    send_btn = ft.Button(
+        content=ft.Row([
+            ft.Icon(icon=ft.Icons.SEND_ROUNDED, size=16, color="#04121B"),
+            ft.Text("أرسل إلى الهاتف", size=12,
+                    weight=ft.FontWeight.BOLD, color="#04121B"),
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=6),
+        bgcolor=ACCENT,
+        height=40,
+        on_click=on_send_text,
+        tooltip="ينسخ النص ويلصقه في الحقل النشط على الهاتف (Ctrl+V تلقائي)",
+        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
+    )
+
+    send_panel = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(icon=ft.Icons.KEYBOARD_ALT, size=14, color=ACCENT),
+                ft.Text("إرسال نص عربي إلى الهاتف", size=12,
+                        weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
+            ], spacing=6),
+            ft.Text(
+                "الضغط على أزرار الحاسوب يخرج حروفاً لاتينية دائماً — هذا قيد في أندرويد "
+                "لا في التطبيق. اكتب النص هنا ثم اضغط «أرسل إلى الهاتف»: سيُنسخ ويُلصق "
+                "تلقائياً في الحقل المفتوح على الهاتف (عربي كامل).",
+                size=10, color=TEXT_MUTED,
+            ),
+            send_field,
+            send_btn,
+        ], spacing=7),
+        padding=12, border_radius=12, bgcolor="#0A1322",
+        border=ft.Border.all(1, BORDER),
+    )
 
     def set_record_state(recording: bool) -> None:
         """يُنادى من المحرّك: يغيّر شكل زر التسجيل حسب الحالة الحقيقية."""
@@ -1624,6 +2014,7 @@ def main(page: ft.Page) -> None:
             advanced_panel,
 
             connect_btn,
+            send_panel,
             ft.Row([refresh_btn, captures_btn, log_btn],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             devices_column,
@@ -1646,6 +2037,11 @@ def main(page: ft.Page) -> None:
                     ft.Text("٥ · زرّا «لقطة» و«تسجيل» يحفظان في مجلد الصور ← MoMoLink. "
                             "الشاشات المحمية (كصور الرسائل التي تُحذف بعد العرض) تظهر سوداء — "
                             "هذا منع من نظام أندرويد نفسه لا عطل في التطبيق.",
+                            size=10, color=TEXT_MUTED),
+                    ft.Text("٦ · العربية: لا تُكتب بالضغط على أزرار الحاسوب (أندرويد يترجمها "
+                            "لاتينياً). اكتبها في مربع «إرسال نص عربي» واضغط «أرسل إلى الهاتف»، "
+                            "أو انسخها على الحاسوب واضغط Ctrl+V داخل نافذة البث. "
+                            "وللأحرف الفرنسية المقلوبة: «خيارات متقدمة» ← وضع لوحة المفاتيح ← uhid.",
                             size=10, color=TEXT_MUTED),
                 ], spacing=5),
                 padding=12, border_radius=12, bgcolor="#0A1322",

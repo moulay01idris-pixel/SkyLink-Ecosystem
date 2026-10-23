@@ -60,15 +60,17 @@ jobs:
           python -m pip install --upgrade "pip<25" "setuptools<70" wheel
           python -m pip install "cython==0.29.36" "buildozer==1.5.0"
 
-      - name: تخزين مؤقت لمجلد البناء (يقلّل الوقت من 60 دقيقة إلى ~10)
+      - name: تخزين مؤقت لتنزيلات البناء فقط (SDK/NDK/p4a)
+        # ملاحظة مهمة: لا نُخزّن مجلد المشروع .buildozer — نسخة قديمة/ناقصة منه
+        # أفسدت بناءً سابقاً (pip لم يجد kivy/pyjnius). نُخزّن ~/.buildozer فقط
+        # (تنزيلات SDK/NDK التي لا تتغيّر) ونترك مجلد البناء نظيفاً كل مرة.
         uses: actions/cache@v4
         with:
           path: |
             ~/.buildozer
-            02_Android_MoMoLinkConnect/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('02_Android_MoMoLinkConnect/buildozer.spec') }}
+          key: buildozer-dl-v3-${{ runner.os }}-${{ hashFiles('02_Android_MoMoLinkConnect/buildozer.spec') }}
           restore-keys: |
-            buildozer-${{ runner.os }}-
+            buildozer-dl-v3-${{ runner.os }}-
 
       - name: التحقق من ملف إعدادات الأندرويد
         working-directory: 02_Android_MoMoLinkConnect
